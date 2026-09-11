@@ -581,52 +581,31 @@ def export_as_table(
     return df
 
 
-# %% Main - request sequences by accessions
+def main():
+    print("Welcome to my sequence analysis program!")
 
-accessions = [
-    "P24627",
-]
+    choice = input("Do you want to provide accession codes or a FASTA file? ")
 
-proteins = get_uniprot_sequences(accessions)
+    if choice.lower() == "accession":
+        codes = input("Enter accession codes (comma-separated): ")
+        codes = [x.strip() for x in codes.split(",")]
 
-# %% Main - get sequemnces by reading fasta
+        print(f"You provided: {codes}")
 
-proteins = np.array(
-    read_fasta(
-        r"C:/Users/Utilizador/OneDrive - ucp.pt/WinFolders/Desktop/codfish collagen.fasta"
-    )
-)
+        # Do something with the accession codes...
 
-# %% Main - get peptides
+    elif choice.lower() == "fasta":
+        filepath = input("Enter the path to the FASTA file: ")
 
-digestions = []
+        print(f"Loading {filepath}...")
 
-for enzyme in [
-    "Alcalase",
-    "Neutrase",
-    "Trypsin",
-    "Trypsin/P",
-    "Papain",
-    "Papain/Q",
-]:
+        # Do something with the FASTA file...
 
-    for misses in range(0, 3):
-        for prot in proteins:
-            a = digest_protein(
-                prot.sequence,
-                enzyme,
-                misses,
-                prot.accession,
-                prot.protein_name,
-            )
-            digestions.append(a)
+    else:
+        print("I don't understand that option.")
 
-digestions = np.array(digestions)
+# %% Main
 
-# %%
+if __name__ == "__main__":
+    main()
 
-peptides = aggregate_peptides(digestions)
-
-data_df = export_as_table(peptides)
-#
-# data_df.to_excel('filename.xlsx')
