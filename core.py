@@ -37,6 +37,219 @@ import pyopenms as oms
 # %% Dataclasses
 
 
+VALID_AMINO_ACIDS = set("ACDEFGHIKLMNPQRSTVWY")
+
+@dataclass
+class AminoacidSequence:
+    
+    
+    sequence: str
+
+    def __post_init__(self) -> None:
+
+        self.sequence = self.sequence.upper().strip().replace(" ", "")
+
+        invalid_chars = set(self.sequence) - VALID_AMINO_ACIDS
+        if invalid_chars:
+            raise ValueError(
+                f"Invalid amino acid residue(s) found in sequence: {sorted(invalid_chars)}. "
+                f"Sequence must contain only standard single-letter codes: {sorted(VALID_AMINO_ACIDS)}"
+            )
+
+    @property
+    def is_empty(self) -> bool:
+        """
+        Return ``True`` if the protein sequence is empty.
+        """
+        return not bool(self.sequence)
+
+    @property
+    def n_terminal_residue(self) -> str | None:
+        """
+        Return the amino-acid residue at the N-terminus.
+
+        Returns
+        -------
+        str or None
+            The first residue in the sequence, or ``None`` if the
+            sequence is empty.
+        """
+
+        return self.sequence[0] if self.sequence else None
+
+    @property
+    def c_terminal_residue(self) -> str | None:
+        """
+        Return the amino-acid residue at the C-terminus.
+
+        Returns
+        -------
+        str or None
+            The last residue in the sequence, or ``None`` if the
+            sequence is empty.
+        """
+        return self.sequence[-1] if self.sequence else None
+
+    @property
+    def number_of_residues(self) -> int:
+        """
+        Return the number of amino-acid residues in the protein.
+        """
+        return len(self.sequence)
+
+    @property
+    def molecular_weight(self) -> float:
+        """
+        Calculate the average molecular weight of the protein in Da.
+
+        Returns
+        -------
+        float
+            Average molecular weight in Daltons. Returns ``0.0`` for
+            an empty sequence.
+        """
+        if not self.sequence:
+            return 0.0
+
+        return oms.AASequence.fromString(self.sequence).getAverageWeight()
+
+    @property
+    def monoisotopic_mass(self) -> float:
+        """
+        Calculate the monoisotopic mass of the protein in Da.
+
+        Returns
+        -------
+        float
+            Monoisotopic mass in Daltons. Returns ``0.0`` for an empty
+            sequence.
+        """
+        if not self.sequence:
+            return 0.0
+
+        return oms.AASequence.fromString(self.sequence).getMonoWeight()
+
+    @property
+    def aminoacids_counts(self) -> dict[str, int]:
+        """
+        Return the absolute count of each amino-acid residue.
+
+        Returns
+        -------
+        dict[str, int]
+            Dictionary mapping each residue observed in the sequence
+            to its absolute count.
+        """
+        return dict(Counter(self.sequence))
+
+    @property
+    def aminoacids_frequencies(self) -> dict[str, float]:
+        """
+        Return the relative frequency of each amino-acid residue.
+
+        Returns
+        -------
+        dict[str, float]
+            Dictionary mapping each residue observed in the sequence
+            to its relative frequency, expressed as a fraction between
+            0 and 1. Returns an empty dictionary for an empty sequence.
+        """
+        if not self.sequence:
+            return {}
+
+        counts = Counter(self.sequence)
+        length = len(self.sequence)
+
+        return {aa: count / length for aa, count in counts.items()}
+
+    @property
+    def bcaa_count(self) -> int:
+        """
+        Return the number of branched-chain amino-acid (BCAA) residues.
+
+        BCAAs are leucine (L), isoleucine (I), and valine (V).
+        """
+        return sum(self.sequence.count(aa) for aa in "LIV")
+
+    @property
+    def aromatic_count(self) -> int:
+        """
+        Return the number of aromatic amino-acid residues.
+
+        Aromatic residues considered are phenylalanine (F),
+        tryptophan (W), and tyrosine (Y).
+        """
+        return sum(self.sequence.count(aa) for aa in "FWY")
+
+    @property
+    def bcaa_fraction(self) -> float:
+        """
+        Return the fraction of residues that are BCAAs.
+
+        Returns
+        -------
+        float
+            Fraction of the sequence composed of leucine, isoleucine,
+            and valine, between 0 and 1. Returns ``0.0`` for an empty
+            sequence.
+        """
+        return (
+            self.bcaa_count / self.number_of_residues if self.sequence else 0.0
+        )
+
+    @property
+    def aromatic_fraction(self) -> float:
+        """
+        Return the fraction of residues that are aromatic amino acids.
+
+        Returns
+        -------
+        float
+            Fraction of the sequence composed of phenylalanine,
+            tryptophan, and tyrosine, between 0 and 1. Returns ``0.0``
+            for an empty sequence.
+        """
+        return (
+            self.aromatic_count / self.number_of_residues
+            if self.sequence
+            else 0.0
+        )
+
+    def count_residue(self, amino_acid: str) -> int:
+        """
+        Return the number of occurrences of a specified amino acid.
+
+        Parameters
+        ----------
+        amino_acid : str
+            One-letter amino-acid code to count.
+
+        Returns
+        -------
+        int
+            Number of occurrences of the specified amino acid.
+        """
+        return self.sequence.count(amino_acid)
+
+    def count_residue_relative(self, amino_acid: str) -> float:
+        """
+        Return the relative frequency of a specified amino acid.
+
+        Parameters
+        ----------
+        amino_acid : str
+            One-letter amino-acid code to count.
+
+        Returns
+        -------
+        float
+            Fraction of residues represented by the specified amino acid.
+        """
+        return (
+            self.sequence.count(amino_acid) / len(self.sequence)
+            if self.sequence
+            else 0.0
+        )
 @dataclass(frozen=True)
 class PeptideSource:
     """
@@ -67,154 +280,136 @@ class PeptideSource:
 
 
 @dataclass
-class Protein:
+class Protein(AminoacidSequence):
     """
-    Represent a protein sequence and associated UniProt metadata.
+    Represent a protein sequence and associated metadata.
+
+    The class stores the protein identifier, name, and amino-acid sequence,
+    and provides derived properties describing the sequence composition,
+    terminal residues, molecular mass, and selected amino-acid groups.
+
+    Molecular weight and monoisotopic mass are calculated using OpenMS.
 
     Parameters
     ----------
     accession : str
         Protein accession identifier, such as a UniProt accession.
-    protein_name : str
-        Protein name.
+    name : str
+        Protein name or description.
     sequence : str
         Protein amino-acid sequence using one-letter amino-acid codes.
 
     Properties
     ----------
+    is_empty : bool
+        Whether the protein sequence is empty.
+    n_terminal_residue : str or None
+        Amino-acid residue at the N-terminus of the sequence.
+        Returns ``None`` for an empty sequence.
+    c_terminal_residue : str or None
+        Amino-acid residue at the C-terminus of the sequence.
+        Returns ``None`` for an empty sequence.
     number_of_residues : int
-        Number of amino-acid residues in the protein sequence.
+        Number of amino-acid residues in the sequence.
     molecular_weight : float
         Average molecular weight of the protein in Daltons (Da).
     monoisotopic_mass : float
         Monoisotopic mass of the protein in Daltons (Da).
-    aminoacids_counts : Counter
-        Absolute count of each amino acid in the sequence.
+    aminoacids_counts : dict[str, int]
+        Absolute count of each amino-acid residue observed in the sequence.
+        Only residues present in the sequence are included.
     aminoacids_frequencies : dict[str, float]
-        Relative frequency of each amino acid in the sequence, expressed
-        as a fraction between 0 and 1.
+        Relative frequency of each amino-acid residue observed in the
+        sequence, expressed as a fraction between 0 and 1.
+    bcaa_count : int
+        Number of branched-chain amino-acid (BCAA) residues
+        (leucine, isoleucine, and valine) in the sequence.
+    aromatic_count : int
+        Number of aromatic amino-acid residues
+        (phenylalanine, tryptophan, and tyrosine) in the sequence.
+    bcaa_fraction : float
+        Fraction of residues that are BCAAs, expressed as a value
+        between 0 and 1.
+    aromatic_fraction : float
+        Fraction of residues that are aromatic amino acids, expressed
+        as a value between 0 and 1.
+
+    Methods
+    -------
+    count_residue(amino_acid)
+        Return the number of occurrences of a specified amino acid.
+    count_residue_relative(amino_acid)
+        Return the relative frequency of a specified amino acid.
+
+    Notes
+    -----
+    The sequence is expected to use standard one-letter amino-acid codes.
+    Validation of the sequence contents is not currently performed.
     """
 
-    accession: str
-    protein_name: str
-    sequence: str
+    accession: str = "No code"
+    name: str = "No name"
 
-    @property
-    def number_of_residues(self) -> int:
-        """Return the number of amino-acid residues in the protein."""
-        return len(self.sequence)
+    
 
-    @property
-    def molecular_weight(self) -> float:
+    def digest(self, enzyme: str, missed_cleavages: int = 0):
         """
-        Calculate the molecular weight of the protein in Daltons.
-        """
-        if not self.sequence:
-            return 0.0
+        Digest a protein sequence into peptides.
 
-        return oms.AASequence.fromString(self.sequence).getAverageWeight()
+        Parameters
+        ----------
+        enzyme : str
+            Name of the proteolytic enzyme used for digestion.
+        missed_cleavages : int
+            Maximum number of allowed missed cleavages.
 
-    @property
-    def monoisotopic_mass(self) -> float:
+        Returns
+        -------
+        PeptideDigest
+            Digested peptides together with the digestion parameters.
         """
-        Calculate the monoisotopic mass of the protein in Daltons.
-        """
-        if not self.sequence:
-            return 0.0
 
-        return oms.AASequence.fromString(self.sequence).getMonoWeight()
-
-    @property
-    def aminoacids_counts(self) -> dict[str, int]:
-        """
-        Returns the absolute frequency of each amino acid.
-        """
-        return dict(Counter(self.sequence))
-
-    @property
-    def aminoacids_frequencies(self) -> dict[str, float]:
-        """
-        Returns the relative frequency of each amino acid as a fraction.
-        """
-        if not self.sequence:
-            return {}
-
-        counts = Counter(self.sequence)
-        length = len(self.sequence)
-
-        return {aa: count / length for aa, count in counts.items()}
-
-    def count_residue(self, amino_acid: str) -> int:
-        """
-        Return the number of occurrences of an amino acid in the sequence.
-        """
-        return self.sequence.count(amino_acid)
-
-    def count_residue_relative(self, amino_acid: str) -> int:
-        """
-        Return the number of occurrences of an amino acid in the sequence.
-        """
-        return self.sequence.count(amino_acid) / len(self.sequence)
+        return digest_protein(
+            self, enzyme=enzyme, missed_cleavages=missed_cleavages
+        )
 
     def __repr__(self) -> str:
         return (
             f"Protein("
-            f"accession='{self.accession}', "
-            f"protein_name='{self.protein_name}', "
-            f"sequence_length={self.number_of_residues})"
+            f"accession = '{self.accession}', "
+            f"name = '{self.name}', "
+            f"sequence_length = {self.number_of_residues})"
         )
 
 
 @dataclass
-class Peptide:
+class Peptide(AminoacidSequence):
     """
     Represent a peptide sequence and properties derived from it.
     """
 
-    sequence: str
     sources: set[PeptideSource] = field(default_factory=set)
 
-    @property
-    def number_of_residues(self) -> int:
-        return len(self.sequence)
-
-    @property
-    def molecular_weight(self) -> float:
-        if not self.sequence:
-            return 0.0
-
-        return oms.AASequence.fromString(self.sequence).getAverageWeight()
-
-    @property
-    def monoisotopic_mass(self) -> float:
-        if not self.sequence:
-            return 0.0
-
-        return oms.AASequence.fromString(self.sequence).getMonoWeight()
-
-    @property
-    def aminoacids_counts(self) -> dict[str, int]:
-        return dict(Counter(self.sequence))
-
-    @property
-    def aminoacids_frequencies(self) -> dict[str, float]:
-        if not self.sequence:
-            return {}
-
-        counts = Counter(self.sequence)
-        return {aa: count / len(self.sequence) for aa, count in counts.items()}
-
-    def count_residue(self, amino_acid: str) -> int:
+    def digest(self, enzyme: str, missed_cleavages: int = 0):
         """
-        Return the number of occurrences of an amino acid in the sequence.
-        """
-        return self.sequence.count(amino_acid)
+        Digest a protein sequence into peptides.
 
-    def count_residue_relative(self, amino_acid: str) -> int:
+        Parameters
+        ----------
+        enzyme : str
+            Name of the proteolytic enzyme used for digestion.
+        missed_cleavages : int
+            Maximum number of allowed missed cleavages.
+
+        Returns
+        -------
+        PeptideDigest
+            Digested peptides together with the digestion parameters.
         """
-        Return the number of occurrences of an amino acid in the sequence.
-        """
-        return self.sequence.count(amino_acid) / len(self.sequence)
+
+        return digest_protein(
+            self, enzyme=enzyme, missed_cleavages=missed_cleavages
+        )
 
     def __repr__(self) -> str:
         return (
@@ -250,11 +445,15 @@ class PeptideDigest:
     """
 
     peptides: list[Peptide]
-    sequence: str
+    protein: Protein
     enzyme: str
     missed_cleavages: int
-    accession: str | None = None
-    protein_name: str | None = None
+
+    # sequence: str
+    # enzyme: str
+    # missed_cleavages: int
+    # accession: str | None = None
+    # protein_name: str | None = None
 
     def search(self, pattern: str | None = None) -> "PeptideDigest":
         """
@@ -295,8 +494,9 @@ class PeptideDigest:
 
 # %% Functions
 
+
 def digest_protein(
-    seq: str,
+    substrate: Protein,
     enzyme: str,
     missed_cleavages: int,
     accession: str | None = None,
@@ -321,7 +521,7 @@ def digest_protein(
     """
 
     peptides = []
-    protein = oms.AASequence.fromString(seq)
+    protein = oms.AASequence.fromString(substrate.sequence)
 
     digestor = oms.ProteaseDigestion()
     digestor.setEnzyme(enzyme)
@@ -333,11 +533,9 @@ def digest_protein(
 
     return PeptideDigest(
         peptides=peptides,
-        sequence=seq,
+        protein=substrate,
         enzyme=enzyme,
         missed_cleavages=missed_cleavages,
-        accession=accession,
-        protein_name=protein_name,
     )
 
 
